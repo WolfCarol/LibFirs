@@ -2,7 +2,7 @@
 
 VERSION
 
-    0.0.0
+    0.0.1
 
 AUTHOR
 
@@ -32,6 +32,16 @@ RECOMMENDED USE
     Makefile:
         firs.dll: firs.c
         gcc -shared -s -Os -flto -fPIC firs.c -o firs.dll -luser32 -lgdi32 -lopengl32 -lxaudio2_8 -lxinput -lole32
+
+VERSION
+
+    0.0.0 First version
+    0.0.1 Add
+        int isKeyDown(int key);
+        int isKeyUp(int key);
+        int isGamepadKeyDown(unsigned int padID, GamepadKey key);
+        int isGamepadKeyUp(unsigned int padID, GamepadKey key);
+        // detect if key or gamepad button is down or up at current frame
 */
 
 #ifndef FIRS_H
@@ -183,10 +193,14 @@ typedef enum GamepadAxis
 } GamepadAxis;
 
 FIRSAPI int isKeyPressed(int key);
+FIRSAPI int isKeyDown(int key);
+FIRSAPI int isKeyUp(int key);
 FIRSAPI void getMousePosition(int *x, int *y);
 FIRSAPI float getMouseWheelScroll();
 FIRSAPI int isGamepadValid(unsigned int padID);
 FIRSAPI int isGamepadKeyPressed(unsigned int padID, GamepadKey key);
+FIRSAPI int isGamepadKeyDown(unsigned int padID, GamepadKey key);
+FIRSAPI int isGamepadKeyUp(unsigned int padID, GamepadKey key);
 FIRSAPI float getGamepadAxis(unsigned int padID, GamepadAxis axis);
 FIRSAPI void setGamepadVibration(unsigned int padID, float leftMotor, float rightMotor);
 
@@ -460,15 +474,27 @@ static void loadGLFunc()
 
 // Input
 
+static unsigned char _prevKeys[256] = {0};
 static unsigned char _currKeys[256] = {0};
 static float _mouseWheelScroll = 0.0f;
 static POINT _mousePos = {0};
 static BOOL _gamepadValid[4] = {0};
+static XINPUT_STATE _prevGamepadState[4] = {0};
 static XINPUT_STATE _currGamepadState[4] = {0};
 
 BOOL isKeyPressed(int key)
 {
     return _currKeys[key] & 0x80;
+}
+
+BOOL isKeyDown(int key)
+{
+    return (_currKeys[key] & 0x80) && !(_prevKeys[key] & 0x80);
+}
+
+BOOL isKeyUp(int key)
+{
+    return !(_currKeys[key] & 0x80) && (_prevKeys[key] & 0x80);
 }
 
 void getMousePosition(int *x, int *y)
@@ -489,11 +515,25 @@ BOOL isGamepadValid(unsigned int padID)
 
 BOOL isGamepadKeyPressed(unsigned int padID, GamepadKey key)
 {
-    return _currGamepadState[padID].Gamepad.wButtons & key;
+    return isGamepadValid(padID) && _currGamepadState[padID].Gamepad.wButtons & key;
+}
+
+BOOL isGamepadKeyDown(unsigned int padID, GamepadKey key)
+{
+    return isGamepadValid(padID) && (_currGamepadState[padID].Gamepad.wButtons & key) && !(_prevGamepadState[padID].Gamepad.wButtons & key);
+}
+
+BOOL isGamepadKeyUp(unsigned int padID, GamepadKey key)
+{
+    return isGamepadValid(padID) && !(_currGamepadState[padID].Gamepad.wButtons & key) && (_prevGamepadState[padID].Gamepad.wButtons & key);
 }
 
 float getGamepadAxis(unsigned int padID, GamepadAxis axis)
 {
+    if (!isGamepadValid(padID))
+    {
+        return 0.0f;
+    }
     if (axis == GamepadLeftStickHorizontal)
     {
         return _currGamepadState[padID].Gamepad.sThumbLX / 32767.0f;
@@ -523,6 +563,10 @@ float getGamepadAxis(unsigned int padID, GamepadAxis axis)
 
 void setGamepadVibration(unsigned int padID, float leftMotor, float rightMotor)
 {
+    if (!isGamepadValid(padID))
+    {
+        return;
+    }
     XINPUT_VIBRATION vibration = {0};
     vibration.wLeftMotorSpeed = (WORD)(leftMotor * 65535);
     vibration.wRightMotorSpeed = (WORD)(rightMotor * 65535);
@@ -743,6 +787,10 @@ void pollInputEvents()
         SendMessage(_window, WM_CLOSE, 0, 0);
     }
     _mouseWheelScroll = 0.0f;
+    for (int i = 0; i < 256; i++)
+    {
+        _prevKeys[i] = _currKeys[i];
+    }
     GetKeyboardState(_currKeys);
     GetCursorPos(&_mousePos);
     ScreenToClient(_window, &_mousePos);
@@ -750,6 +798,7 @@ void pollInputEvents()
     {
         if (_gamepadValid[i] == TRUE)
         {
+            _prevGamepadState[i] = _currGamepadState[i];
             _gamepadValid[i] = XInputGetState(i, &_currGamepadState[i]) == ERROR_SUCCESS;
         }
     }
