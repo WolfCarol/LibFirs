@@ -2,7 +2,7 @@
 
 VERSION
 
-    0.0.1
+    0.0.2
 
 AUTHOR
 
@@ -18,7 +18,7 @@ MIN REQUIRED OS
 
 TARGET ARCHITECTURE
 
-    x64
+    x86_64
 
 RECOMMENDED USE
 
@@ -42,6 +42,14 @@ VERSION
         int isGamepadKeyDown(unsigned int padID, GamepadKey key);
         int isGamepadKeyUp(unsigned int padID, GamepadKey key);
         // detect if key or gamepad button is down or up at current frame
+    0.0.2 Add
+        int isMouseButtonPressed(MouseButton button);
+        int isMouseButtonDown(MouseButton button);
+        int isMouseButtonUp(MouseButton button);
+        // detect mouse button state in client area
+        Change
+        int setUniform(unsigned int shaderID, const char *name, const void *value, unsigned int dimension, unsigned int count, int type, int matrix);
+        // glUniformMatrix2/3/4fv transpose 1 -> 0
 */
 
 #ifndef FIRS_H
@@ -57,9 +65,6 @@ VERSION
 
 typedef enum KeyCode
 {
-    MouseLeft = 0x01,
-    MouseRight = 0x02,
-    MouseMiddle = 0x04,
     Backspace = 0x08,
     Tab = 0x09,
     Return = 0x0D,
@@ -164,6 +169,13 @@ typedef enum KeyCode
     Quote = 0xDE
 } KeyCode;
 
+typedef enum MouseButton
+{
+    MouseLeft = 0x01,
+    MouseRight = 0x02,
+    MouseMiddle = 0x04
+} MouseButton;
+
 typedef enum GamepadKey
 {
     GamepadUp = 0x0001,
@@ -192,9 +204,12 @@ typedef enum GamepadAxis
     GamepadRightTrigger = 5
 } GamepadAxis;
 
-FIRSAPI int isKeyPressed(int key);
-FIRSAPI int isKeyDown(int key);
-FIRSAPI int isKeyUp(int key);
+FIRSAPI int isKeyPressed(KeyCode key);
+FIRSAPI int isKeyDown(KeyCode key);
+FIRSAPI int isKeyUp(KeyCode key);
+FIRSAPI int isMouseButtonPressed(MouseButton button);
+FIRSAPI int isMouseButtonDown(MouseButton button);
+FIRSAPI int isMouseButtonUp(MouseButton button);
 FIRSAPI void getMousePosition(int *x, int *y);
 FIRSAPI float getMouseWheelScroll();
 FIRSAPI int isGamepadValid(unsigned int padID);
@@ -472,6 +487,16 @@ static void loadGLFunc()
     glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)(uintptr_t)wglGetProcAddress("glFramebufferTexture2D");
 }
 
+// Window
+
+static HWND _window = NULL;
+static BOOL _isDragging = FALSE;
+static POINT _mouseStartPos = {0};
+static BOOL _cursorHidden = FALSE;
+static HDC _deviceContext = NULL;
+static HGLRC _renderContext = NULL;
+static BOOL _shouldClose = FALSE;
+
 // Input
 
 static unsigned char _prevKeys[256] = {0};
@@ -482,25 +507,50 @@ static BOOL _gamepadValid[4] = {0};
 static XINPUT_STATE _prevGamepadState[4] = {0};
 static XINPUT_STATE _currGamepadState[4] = {0};
 
-BOOL isKeyPressed(int key)
+BOOL isKeyPressed(KeyCode key)
 {
     return _currKeys[key] & 0x80;
 }
 
-BOOL isKeyDown(int key)
+BOOL isKeyDown(KeyCode key)
 {
     return (_currKeys[key] & 0x80) && !(_prevKeys[key] & 0x80);
 }
 
-BOOL isKeyUp(int key)
+BOOL isKeyUp(KeyCode key)
 {
     return !(_currKeys[key] & 0x80) && (_prevKeys[key] & 0x80);
+}
+
+static BOOL isMouseInClient()
+{
+    POINT pt = {0};
+    GetCursorPos(&pt);
+    ScreenToClient(_window, &pt);
+    RECT rect = {0};
+    GetClientRect(_window, &rect);
+    return PtInRect(&rect, pt);
 }
 
 void getMousePosition(int *x, int *y)
 {
     *x = _mousePos.x;
     *y = _mousePos.y;
+}
+
+BOOL isMouseButtonPressed(MouseButton button)
+{
+    return (_currKeys[button] & 0x80) && isMouseInClient();
+}
+
+BOOL isMouseButtonDown(MouseButton button)
+{
+    return (_currKeys[button] & 0x80) && !(_prevKeys[button] & 0x80) && isMouseInClient();
+}
+
+BOOL isMouseButtonUp(MouseButton button)
+{
+    return !(_currKeys[button] & 0x80) && (_prevKeys[button] & 0x80) && isMouseInClient();
 }
 
 float getMouseWheelScroll()
@@ -574,14 +624,6 @@ void setGamepadVibration(unsigned int padID, float leftMotor, float rightMotor)
 }
 
 // Window
-
-static BOOL _isDragging = FALSE;
-static POINT _mouseStartPos = {0};
-static BOOL _cursorHidden = FALSE;
-static HWND _window = NULL;
-static HDC _deviceContext = NULL;
-static HGLRC _renderContext = NULL;
-static BOOL _shouldClose = FALSE;
 
 typedef BOOL(__stdcall *PFNWGLSWAPINTERVALEXTPROC)(int interval);
 static PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
@@ -1437,7 +1479,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix2fv(location, count, 1, value);
+            glUniformMatrix2fv(location, count, 0, value);
         }
         else
         {
@@ -1455,7 +1497,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix3fv(location, count, 1, value);
+            glUniformMatrix3fv(location, count, 0, value);
         }
         else
         {
@@ -1473,7 +1515,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix4fv(location, count, 1, value);
+            glUniformMatrix4fv(location, count, 0, value);
         }
         else
         {
