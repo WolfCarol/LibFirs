@@ -2,7 +2,7 @@
 
 VERSION
 
-    0.0.2
+    0.0.3
 
 AUTHOR
 
@@ -50,6 +50,12 @@ VERSION
         Change
         int setUniform(unsigned int shaderID, const char *name, const void *value, unsigned int dimension, unsigned int count, int type, int matrix);
         // glUniformMatrix2/3/4fv transpose 1 -> 0
+    0.0.3 Change
+        int setUniform(unsigned int shaderID, const char *name, const void *value, unsigned int dimension, unsigned int count, int type, int matrix);
+        // glUniformMatrix2/3/4fv transpose 0 -> 1
+        // disable Vsync
+        void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor, int isFloat);
+        // add parameter isFloat
 */
 
 #ifndef FIRS_H
@@ -284,7 +290,7 @@ FIRSAPI void updateBuffer(unsigned int bufferID, const void *data, long long siz
 FIRSAPI unsigned int createVertex(unsigned int elementID);
 FIRSAPI void destroyVertex(unsigned int vertexID);
 FIRSAPI void bindVertex(unsigned int vertexID);
-FIRSAPI void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor);
+FIRSAPI void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor, int isFloat);
 
 // Shader
 
@@ -724,7 +730,7 @@ static void initOpenGL()
     wglMakeCurrent(_deviceContext, _renderContext);
     loadGLFunc();
     wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)(uintptr_t)wglGetProcAddress("wglSwapIntervalEXT");
-    wglSwapIntervalEXT(1);
+    // wglSwapIntervalEXT(1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
@@ -1346,7 +1352,7 @@ void bindBuffer(unsigned int bufferID, BOOL type)
 void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, BOOL type)
 {
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, bufferID);
-    glBufferSubData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, offset * 4, size * sizeof(float), data);
+    glBufferSubData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, offset * 4, size * 4, data);
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
@@ -1373,12 +1379,12 @@ void bindVertex(unsigned int vertexID)
     glBindVertexArray(vertexID);
 }
 
-void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor)
+void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor, BOOL isFloat)
 {
     glBindVertexArray(vertexID);
     glBindBuffer(GL_ARRAY_BUFFER, arrayID);
     glEnableVertexAttribArray(location);
-    glVertexAttribPointer(location, size, GL_FLOAT, FALSE, stride * sizeof(float), (void *)(offset * sizeof(float)));
+    glVertexAttribPointer(location, size, isFloat ? GL_FLOAT : GL_INT, FALSE, stride * 4, (void *)(unsigned long long)(offset * 4));
     glVertexAttribDivisor(location, divisor);
     glBindVertexArray(0);
 }
@@ -1479,7 +1485,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix2fv(location, count, 0, value);
+            glUniformMatrix2fv(location, count, 1, value);
         }
         else
         {
@@ -1497,7 +1503,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix3fv(location, count, 0, value);
+            glUniformMatrix3fv(location, count, 1, value);
         }
         else
         {
@@ -1515,7 +1521,7 @@ BOOL setUniform(unsigned int shaderID, const char *name, const void *value, unsi
     {
         if (matrix)
         {
-            glUniformMatrix4fv(location, count, 0, value);
+            glUniformMatrix4fv(location, count, 1, value);
         }
         else
         {
