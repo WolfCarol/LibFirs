@@ -2,7 +2,7 @@
 
 VERSION
 
-    0.0.3
+    0.0.4
 
 AUTHOR
 
@@ -56,6 +56,14 @@ VERSION
         // disable Vsync
         void setAttribute(unsigned int vertexID, unsigned int arrayID, int location, int size, int offset, int stride, int divisor, int isFloat);
         // add parameter isFloat
+    0.0.4 Fix
+        int updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int offsetY, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data, int linear);
+        // fix no generate mipmap bug
+        Change
+        unsigned int createBuffer(const void *data, long long size, int type, int usage);
+        // now usage can be static / dynamic / stream
+        void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, int type, int usage, int enlarge);
+        // add parameter enlarge
 */
 
 #ifndef FIRS_H
@@ -276,14 +284,14 @@ FIRSAPI unsigned int getGLErrorCode();
 FIRSAPI int createTexture(unsigned int *textureID, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data, int linear);
 FIRSAPI void destroyTexture(unsigned int textureID);
 FIRSAPI void bindTexture(unsigned int textureID, unsigned int slot);
-FIRSAPI int updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int offsetY, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data);
+FIRSAPI int updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int offsetY, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data, int linear);
 
 // Buffer
 
-FIRSAPI unsigned int createBuffer(const void *data, long long size, int type, int dynamic);
+FIRSAPI unsigned int createBuffer(const void *data, long long size, int type, int usage);
 FIRSAPI void destroyBuffer(unsigned int bufferID, int type);
 FIRSAPI void bindBuffer(unsigned int bufferID, int type);
-FIRSAPI void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, int type);
+FIRSAPI void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, int type, int usage, int enlarge);
 
 // Vertex
 
@@ -954,9 +962,8 @@ void initAudioEngine(unsigned int maxSourceCount)
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     XAudio2Create(&_audioEngine, 0, XAUDIO2_DEFAULT_PROCESSOR);
     _audioEngine->lpVtbl->CreateMasteringVoice(_audioEngine, &_masterVoice, 2, XAUDIO2_DEFAULT_SAMPLERATE, 0, NULL, NULL, AudioCategory_GameMedia);
-    _sourceList = (SourceData *)malloc(maxSourceCount * sizeof(SourceData));
+    _sourceList = (SourceData *)calloc(maxSourceCount, sizeof(SourceData));
     _sourceCount = maxSourceCount;
-    memset(_sourceList, 0, _sourceCount * sizeof(SourceData));
 }
 
 void shutdownAudioEngine()
@@ -1259,10 +1266,6 @@ BOOL createTexture(unsigned int *textureID, unsigned int width, unsigned int hei
     unsigned int texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    if (linear)
-    {
-        glGenerateMipmap(GL_TEXTURE_2D);
-    }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
@@ -1285,6 +1288,10 @@ BOOL createTexture(unsigned int *textureID, unsigned int width, unsigned int hei
         internalFormat = GL_RGB8;
     }
     glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    if (linear)
+    {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
     *textureID = texture;
     return TRUE;
@@ -1305,7 +1312,7 @@ void bindTexture(unsigned int textureID, unsigned int slot)
     glBindTexture(GL_TEXTURE_2D, textureID);
 }
 
-BOOL updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int offsetY, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data)
+BOOL updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int offsetY, unsigned int width, unsigned int height, unsigned int channels, const unsigned char *data, BOOL linear)
 {
     glBindTexture(GL_TEXTURE_2D, textureID);
     unsigned int format = GL_RGBA;
@@ -1322,18 +1329,22 @@ BOOL updateTexture(unsigned int textureID, unsigned int offsetX, unsigned int of
         format = GL_RGB;
     }
     glTexSubImage2D(GL_TEXTURE_2D, 0, offsetX, offsetY, width, height, format, GL_UNSIGNED_BYTE, data);
+    if (linear)
+    {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
     return TRUE;
 }
 
 // Buffer
 
-unsigned int createBuffer(const void *data, long long size, BOOL type, BOOL dynamic)
+unsigned int createBuffer(const void *data, long long size, BOOL type, int usage)
 {
     unsigned int bufferID;
     glGenBuffers(1, &bufferID);
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, bufferID);
-    glBufferData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, size * 4, data, dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
+    glBufferData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, size * 4, data, usage);
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, 0);
     return bufferID;
 }
@@ -1349,10 +1360,17 @@ void bindBuffer(unsigned int bufferID, BOOL type)
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, bufferID);
 }
 
-void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, BOOL type)
+void updateBuffer(unsigned int bufferID, const void *data, long long size, long long offset, BOOL type, int usage, BOOL enlarge)
 {
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, bufferID);
-    glBufferSubData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, offset * 4, size * 4, data);
+    if (enlarge)
+    {
+        glBufferData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, size * 4, data, usage);
+    }
+    else
+    {
+        glBufferSubData(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, offset * 4, size * 4, data);
+    }
     glBindBuffer(type ? GL_ARRAY_BUFFER : GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
