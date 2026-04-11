@@ -114,7 +114,7 @@ public enum KeyCode : int
 public static partial class FIRAPI
 {
     [LibraryImport("fir.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial uint initWindow(uint size, string title);
+    private static partial nint initWindow(ref uint size, string title);
 
     [LibraryImport("fir.dll")]
     private static partial nint getWindowHandle();
@@ -161,20 +161,26 @@ public static partial class FIRAPI
     [LibraryImport("fir.dll")]
     private static partial void sleep(uint ms);
 
-    public static (int width, int height) InitWindow(int width, int height, string title, bool isFullscreen = false)
+    public static nint InitWindow(ref int width, ref int height, string title, bool isFullscreen = false)
     {
-        uint result;
+        uint size;
+        nint handle;
 
         if (isFullscreen == true)
         {
-            result = initWindow(0, title);
+            size = 0;
+            handle = initWindow(ref size, title);
         }
         else
         {
-            result = initWindow((uint)(width | height << 16), title);
+            size = (uint)(width | height << 16);
+            handle = initWindow(ref size, title);
         }
 
-        return ((short)result, (short)(result >> 16));
+        width = (short)size;
+        height = (short)(size >> 16);
+
+        return handle;
     }
 
     public static nint GetWindowHandle() => getWindowHandle();

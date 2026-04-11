@@ -1,6 +1,6 @@
 /*
     FIRLIB -
-        相比FIRSLIB极大精简了API数量，并且获得了更底层的控制，一共只有15个函数
+        相比FIRSLIB极大精简了API数量，并且获得了更底层的控制，一共只有14个函数
 
         FIRLIB使用最少依赖，只是用了Windows.h和必要的使用WASAPI相关的头文件
         需要链接user32.dll（创建窗口、处理输入和多线程等），gdi32.dll和opengl32.dll（OpenGL相关），ole32.dll（加载音频系统）
@@ -144,16 +144,13 @@ extern "C"
 #define KC_RightBracket 0xDD
 #define KC_Quote 0xDE
 
-    // 用于创建全屏或窗口化的程序
+    // 用于创建全屏或窗口化的窗口程序
 
 #define FULLSCREEN ((unsigned int)0)
 #define WINDOWED(width, height) ((unsigned short)(width) | ((unsigned int)(height) << 16))
 
-    // 创建窗口，参数size为0时创建全屏窗口，不为0时LOWORD=w，HIWORD=h，title为窗口的标题(UTF-16)，返回实际的窗口分辨率（w=LOWORD, h=HIWORD）
-    FIRAPI unsigned int initWindow(unsigned int size, const unsigned short *title);
-
-    // 获取窗口句柄，通常用不到，除非需要使用窗口的拓展功能
-    FIRAPI void *getWindowHandle();
+    // 创建窗口，参数传入size的引用，值为0时创建全屏窗口，不为0时LOWORD=w，HIWORD=h，title为窗口的标题(UTF-16)，size传出实际的窗口分辨率（w=LOWORD, h=HIWORD），返回窗口句柄
+    FIRAPI void *initWindow(unsigned int *size, const unsigned short *title);
 
     // 主动关闭窗口
     FIRAPI void closeWindow();
@@ -304,11 +301,11 @@ extern "C"
     static LARGE_INTEGER g_clockFreq = {0};
     static LARGE_INTEGER g_clockStart = {0};
 
-    FIRAPI unsigned int initWindow(unsigned int size, const unsigned short *title)
+    FIRAPI void *initWindow(unsigned int *size, const unsigned short *title)
     {
         HANDLE windowInitedEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-        g_windowSize = size;
+        g_windowSize = *size;
         g_windowTitle = title;
 
         HANDLE hMsgTrd = CreateThread(NULL, 0, MessageThreadFunc, (void *)windowInitedEvent, 0, NULL);
@@ -324,11 +321,8 @@ extern "C"
         QueryPerformanceFrequency(&g_clockFreq);
         QueryPerformanceCounter(&g_clockStart);
 
-        return g_windowSize;
-    }
+        *size = g_windowSize;
 
-    FIRAPI void *getWindowHandle()
-    {
         return g_hWnd;
     }
 
