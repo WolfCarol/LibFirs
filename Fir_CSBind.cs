@@ -117,9 +117,6 @@ public static partial class FIRAPI
     private static partial nint initWindow(ref uint size, string title);
 
     [LibraryImport("fir.dll")]
-    private static partial nint getWindowHandle();
-
-    [LibraryImport("fir.dll")]
     private static partial void closeWindow();
 
     [LibraryImport("fir.dll")]
@@ -182,8 +179,6 @@ public static partial class FIRAPI
 
         return handle;
     }
-
-    public static nint GetWindowHandle() => getWindowHandle();
 
     public static void CloseWindow() => closeWindow();
 
