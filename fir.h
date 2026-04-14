@@ -247,9 +247,8 @@ extern "C"
 
         RegisterClass(&wc);
 
-        int width = GetSystemMetrics(SM_CXSCREEN);
-        int height = GetSystemMetrics(SM_CYSCREEN);
-        DWORD style = WS_POPUP;
+        int x, y, width, height;
+        DWORD style;
         if (g_windowSize != 0)
         {
             style = WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
@@ -257,13 +256,20 @@ extern "C"
             AdjustWindowRect(&rect, style, FALSE);
             width = rect.right - rect.left;
             height = rect.bottom - rect.top;
+            x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+            y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
         }
         else
         {
+            style = WS_POPUP;
+            width = GetSystemMetrics(SM_CXSCREEN);
+            height = GetSystemMetrics(SM_CYSCREEN);
+            x = CW_USEDEFAULT;
+            y = CW_USEDEFAULT;
             g_windowSize = WINDOWED(width, height);
         }
 
-        g_hWnd = CreateWindow(wc.lpszClassName, g_windowTitle, style, CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL, wc.hInstance, NULL);
+        g_hWnd = CreateWindow(wc.lpszClassName, g_windowTitle, style, x, y, width, height, NULL, NULL, wc.hInstance, NULL);
 
         g_hDC = GetDC(g_hWnd);
 
