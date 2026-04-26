@@ -111,10 +111,16 @@ public enum KeyCode : int
     Quote = 0xDE
 }
 
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+public delegate void ResizeCallback(int width, int height);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+public delegate void CharCallback(char character);
+
 public static partial class FIRAPI
 {
     [LibraryImport("fir.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial nint initWindow(ref uint size, string title);
+    private static partial void initWindow(ref uint size, string title);
 
     [LibraryImport("fir.dll")]
     private static partial void closeWindow();
@@ -158,26 +164,38 @@ public static partial class FIRAPI
     [LibraryImport("fir.dll")]
     private static partial void sleep(uint ms);
 
-    public static nint InitWindow(ref int width, ref int height, string title, bool isFullscreen = false)
-    {
-        uint size;
-        nint handle;
+    [LibraryImport("fir.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool isFullscreen();
 
-        if (isFullscreen == true)
-        {
-            size = 0;
-            handle = initWindow(ref size, title);
-        }
-        else
+    [LibraryImport("fir.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial void setWindowTitle(string title);
+
+    [LibraryImport("fir.dll")]
+    private static partial void setWindowMode(uint size);
+
+    [LibraryImport("fir.dll")]
+    private static partial void setWindowResizable([MarshalAs(UnmanagedType.Bool)] bool resizable);
+
+    [LibraryImport("fir.dll")]
+    private static partial void setResizeHandler(nint onResize);
+
+    [LibraryImport("fir.dll")]
+    private static partial void setCharacterHandler(nint onCharacterInput);
+
+    public static void InitWindow(ref int width, ref int height, string title, bool isFullscreen = false)
+    {
+        uint size = 0;
+
+        if (isFullscreen == false)
         {
             size = (uint)(width | height << 16);
-            handle = initWindow(ref size, title);
         }
+
+        initWindow(ref size, title);
 
         width = (short)size;
         height = (short)(size >> 16);
-
-        return handle;
     }
 
     public static void CloseWindow() => closeWindow();
@@ -218,4 +236,26 @@ public static partial class FIRAPI
     }
 
     public static void Sleep(uint ms) => sleep(ms);
+
+    public static bool IsFullscreen() => isFullscreen();
+
+    public static void SetWindowTitle(string title) => setWindowTitle(title);
+
+    public static void SetWindowMode(int width, int height, bool isFullscreen)
+    {
+        uint size = 0;
+
+        if (isFullscreen == false)
+        {
+            size = (uint)(width | height << 16);
+        }
+
+        setWindowMode(size);
+    }
+
+    public static void SetWindowResizable([MarshalAs(UnmanagedType.Bool)] bool resizable) => setWindowResizable(resizable);
+
+    public static void SetResizeHandler(ResizeCallback onResize) => setResizeHandler(Marshal.GetFunctionPointerForDelegate(onResize));
+
+    public static void SetCharacterHandler(CharCallback onCharacterInput) => setCharacterHandler(Marshal.GetFunctionPointerForDelegate(onCharacterInput));
 }

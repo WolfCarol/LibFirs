@@ -1,6 +1,6 @@
 /*
     FIRLIB -
-        相比FIRSLIB极大精简了API数量，并且获得了更底层的控制，一共只有14个函数
+        相比FIRSLIB极大精简了API数量，并且获得了更底层的控制，一共只有14个函数，另外有6个可选的函数用于扩展功能
 
         FIRLIB使用最少依赖，只是用了Windows.h和必要的使用WASAPI相关的头文件
         需要链接user32.dll（创建窗口、处理输入和多线程等），gdi32.dll和opengl32.dll（OpenGL相关），ole32.dll（加载音频系统）
@@ -16,6 +16,7 @@
         FIRLIB去掉了原FIRSLIB的S，有降级之意，表示更底层的控制，FIR翻译为冷杉，是中国一种古老的树种，而FIRLIB也使用了非常“古老”的技术
 */
 
+// #define FIRLIB_EXTENSIONS
 // #define FIRLIB_IMPLEMENTATION
 // #define FIRAPI_EXPORT
 // #define FIRAPI_IMPORT
@@ -149,8 +150,8 @@ extern "C"
 #define FULLSCREEN ((unsigned int)0)
 #define WINDOWED(width, height) ((unsigned short)(width) | ((unsigned int)(height) << 16))
 
-    // 创建窗口，参数传入size的引用，值为0时创建全屏窗口，不为0时LOWORD=w，HIWORD=h，title为窗口的标题(UTF-16)，size传出实际的窗口分辨率（w=LOWORD, h=HIWORD），返回窗口句柄
-    FIRAPI void *initWindow(unsigned int *size, const unsigned short *title);
+    // 创建窗口，参数传入clientSize的引用，值为0时创建全屏窗口，不为0时LOWORD=w，HIWORD=h，title为窗口的标题（UTF-16），clientSize传出实际的窗口客户区分辨率（w=LOWORD, h=HIWORD）
+    FIRAPI void initWindow(unsigned int *clientSize, const unsigned short *title);
 
     // 主动关闭窗口
     FIRAPI void closeWindow();
@@ -191,6 +192,35 @@ extern "C"
     // 阻塞一会儿（非忙等），实际睡眠时长受系统精度影响，大概为15.6ms
     FIRAPI void sleep(unsigned int ms);
 
+#ifdef FIRLIB_EXTENSIONS
+
+    // 用于处理窗口大小改变的回调，参数是客户区的宽高
+    typedef void (*RESIZECALLBACK)(int width, int height);
+
+    // 用于处理字符输入的回调，参数是UTF-16的宽字符
+    typedef void (*CHARCALLBACK)(unsigned short character);
+
+    // 检查窗口是否为全屏化的
+    FIRAPI int isFullscreen();
+
+    // 设置窗口的标题（UTF-16）
+    FIRAPI void setWindowTitle(const unsigned short *title);
+
+    // 设置窗口为全屏化或窗口化，用法同initWindow的clientSize
+    FIRAPI void setWindowMode(unsigned int clientSize);
+
+    // 设置窗口是否可拖拽改变大小和可最大化，窗口全屏时调用此函数无效
+    // 调用此函数时窗口客户区大小不变，因此窗口最大化时设置resizable为true会导致一定程度上的不美观
+    FIRAPI void setWindowResizable(int resizable);
+
+    // 设置窗口大小改变时的处理函数
+    FIRAPI void setResizeHandler(RESIZECALLBACK onResize);
+
+    // 设置字符输入时的处理函数
+    FIRAPI void setCharacterHandler(CHARCALLBACK onCharacterInput);
+
+#endif
+
 #ifdef FIRLIB_IMPLEMENTATION
 
 #define UNICODE
@@ -207,6 +237,13 @@ extern "C"
     static HDC g_hDC = NULL;
     static HGLRC g_hGLRC = NULL;
     static volatile BOOL g_shouldClose = FALSE;
+
+#ifdef FIRLIB_EXTENSIONS
+
+    static RESIZECALLBACK g_onResize = NULL;
+    static CHARCALLBACK g_onCharacterInput = NULL;
+
+#endif
 
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
@@ -229,11 +266,33 @@ extern "C"
             }
             PostQuitMessage(0);
         }
+
+#ifdef FIRLIB_EXTENSIONS
+
+        else if (uMsg == WM_SIZE)
+        {
+            if (g_onResize != NULL)
+            {
+                g_onResize(LOWORD(lParam), HIWORD(lParam));
+            }
+        }
+        else if (uMsg == WM_CHAR)
+        {
+            WCHAR wc = (WCHAR)wParam;
+            if (g_onCharacterInput != NULL)
+            {
+                g_onCharacterInput(wc);
+            }
+        }
+
+#endif
+
         return DefWindowProc(hWnd, uMsg, wParam, lParam);
     }
 
     static const unsigned short *g_windowTitle = NULL;
-    static unsigned int g_windowSize = 0;
+    static unsigned int g_clientSize = 0;
+    static BOOL g_isFullscreen = FALSE;
 
     static DWORD WINAPI MessageThreadFunc(LPVOID param)
     {
@@ -249,15 +308,16 @@ extern "C"
 
         int x, y, width, height;
         DWORD style;
-        if (g_windowSize != 0)
+        if (g_clientSize != 0)
         {
             style = WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
-            RECT rect = {0, 0, LOWORD(g_windowSize), HIWORD(g_windowSize)};
+            RECT rect = {0, 0, LOWORD(g_clientSize), HIWORD(g_clientSize)};
             AdjustWindowRect(&rect, style, FALSE);
             width = rect.right - rect.left;
             height = rect.bottom - rect.top;
             x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
             y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
+            g_isFullscreen = FALSE;
         }
         else
         {
@@ -266,7 +326,8 @@ extern "C"
             height = GetSystemMetrics(SM_CYSCREEN);
             x = CW_USEDEFAULT;
             y = CW_USEDEFAULT;
-            g_windowSize = WINDOWED(width, height);
+            g_clientSize = WINDOWED(width, height);
+            g_isFullscreen = TRUE;
         }
 
         g_hWnd = CreateWindow(wc.lpszClassName, g_windowTitle, style, x, y, width, height, NULL, NULL, wc.hInstance, NULL);
@@ -307,11 +368,11 @@ extern "C"
     static LARGE_INTEGER g_clockFreq = {0};
     static LARGE_INTEGER g_clockStart = {0};
 
-    FIRAPI void *initWindow(unsigned int *size, const unsigned short *title)
+    FIRAPI void initWindow(unsigned int *clientSize, const unsigned short *title)
     {
         HANDLE windowInitedEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-        g_windowSize = *size;
+        g_clientSize = *clientSize;
         g_windowTitle = title;
 
         HANDLE hMsgTrd = CreateThread(NULL, 0, MessageThreadFunc, (void *)windowInitedEvent, 0, NULL);
@@ -327,9 +388,7 @@ extern "C"
         QueryPerformanceFrequency(&g_clockFreq);
         QueryPerformanceCounter(&g_clockStart);
 
-        *size = g_windowSize;
-
-        return g_hWnd;
+        *clientSize = g_clientSize;
     }
 
     FIRAPI void closeWindow()
@@ -347,7 +406,7 @@ extern "C"
         return GetForegroundWindow() == g_hWnd;
     }
 
-    FIRAPI int isKeyPress(int keyCode)
+    FIRAPI BOOL isKeyPress(int keyCode)
     {
         return !!(GetAsyncKeyState(keyCode) & 0x8000);
     }
@@ -467,6 +526,91 @@ extern "C"
     {
         Sleep(ms);
     }
+
+#ifdef FIRLIB_EXTENSIONS
+
+    static BOOL g_resizable = FALSE;
+
+    FIRAPI BOOL isFullscreen()
+    {
+        return g_isFullscreen;
+    }
+
+    FIRAPI void setWindowTitle(const unsigned short *title)
+    {
+        g_windowTitle = title;
+        SetWindowText(g_hWnd, g_windowTitle);
+    }
+
+    FIRAPI void setWindowMode(unsigned int clientSize)
+    {
+        if (clientSize != 0)
+        {
+            LONG_PTR style = WS_OVERLAPPEDWINDOW;
+            if (!g_resizable)
+            {
+                style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
+            }
+            SetWindowLongPtr(g_hWnd, GWL_STYLE, style);
+            RECT rect = {0, 0, LOWORD(clientSize), HIWORD(clientSize)};
+            AdjustWindowRect(&rect, style, FALSE);
+            int width = rect.right - rect.left;
+            int height = rect.bottom - rect.top;
+            int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+            int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
+            SetWindowPos(g_hWnd, HWND_TOP, x, y, width, height, SWP_SHOWWINDOW);
+            g_clientSize = WINDOWED(width, height);
+            g_isFullscreen = FALSE;
+        }
+        else
+        {
+            int width = GetSystemMetrics(SM_CXSCREEN);
+            int height = GetSystemMetrics(SM_CYSCREEN);
+            SetWindowLongPtr(g_hWnd, GWL_STYLE, WS_POPUP);
+            SetWindowPos(g_hWnd, HWND_TOP, 0, 0, width, height, SWP_SHOWWINDOW);
+            g_clientSize = WINDOWED(width, height);
+            g_isFullscreen = TRUE;
+        }
+    }
+
+    FIRAPI void setWindowResizable(int resizable)
+    {
+        if (!g_isFullscreen)
+        {
+            g_resizable = resizable;
+
+            LONG_PTR style = GetWindowLongPtr(g_hWnd, GWL_STYLE);
+
+            if (g_resizable)
+            {
+                style |= (WS_THICKFRAME | WS_MAXIMIZEBOX);
+            }
+            else
+            {
+                style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+            }
+
+            SetWindowLongPtr(g_hWnd, GWL_STYLE, style);
+
+            RECT rect = {0};
+            GetClientRect(g_hWnd, &rect);
+            AdjustWindowRect(&rect, style, FALSE);
+
+            SetWindowPos(g_hWnd, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+    }
+
+    FIRAPI void setResizeHandler(RESIZECALLBACK onResize)
+    {
+        g_onResize = onResize;
+    }
+
+    FIRAPI void setCharacterHandler(CHARCALLBACK onCharacterInput)
+    {
+        g_onCharacterInput = onCharacterInput;
+    }
+
+#endif
 
 #ifdef __cplusplus
 }
