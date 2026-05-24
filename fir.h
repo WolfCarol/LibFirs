@@ -200,6 +200,9 @@ extern "C"
     // 用于处理字符输入的回调，参数是UTF-16的宽字符
     typedef void (*CHARCALLBACK)(unsigned short character);
 
+    // 用于处理鼠标滚轮滚动的回调，参数是滚动的量
+    typedef void (*SCROLLCALLBACK)(float delta);
+
     // 检查窗口是否为全屏化的
     FIRAPI int isFullscreen();
 
@@ -218,6 +221,9 @@ extern "C"
 
     // 设置字符输入时的处理函数
     FIRAPI void setCharacterHandler(CHARCALLBACK onCharacterInput);
+
+    // 设置鼠标滚轮滚动时的处理函数
+    FIRAPI void setMouseWheelScrollHandler(SCROLLCALLBACK onMouseWheelScroll);
 
 #endif
 
@@ -242,6 +248,7 @@ extern "C"
 
     static RESIZECALLBACK g_onResize = NULL;
     static CHARCALLBACK g_onCharacterInput = NULL;
+    static SCROLLCALLBACK g_onMouseWheelScroll = NULL;
 
 #endif
 
@@ -282,6 +289,14 @@ extern "C"
             if (g_onCharacterInput != NULL)
             {
                 g_onCharacterInput(wc);
+            }
+        }
+        else if (uMsg == WM_MOUSEWHEEL)
+        {
+            short delta = HIWORD(wParam);
+            if (g_onMouseWheelScroll != NULL)
+            {
+                g_onMouseWheelScroll(delta / 120.0f);
             }
         }
 
@@ -608,6 +623,11 @@ extern "C"
     FIRAPI void setCharacterHandler(CHARCALLBACK onCharacterInput)
     {
         g_onCharacterInput = onCharacterInput;
+    }
+
+    FIRAPI void setMouseWheelScrollHandler(SCROLLCALLBACK onMouseWheelScroll)
+    {
+        g_onMouseWheelScroll = onMouseWheelScroll;
     }
 
 #endif

@@ -117,6 +117,9 @@ public delegate void ResizeCallback(int width, int height);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
 public delegate void CharCallback(char character);
 
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+public delegate void ScrollCallback(float delta);
+
 public static partial class FIRAPI
 {
     [LibraryImport("fir.dll", StringMarshalling = StringMarshalling.Utf16)]
@@ -182,6 +185,9 @@ public static partial class FIRAPI
 
     [LibraryImport("fir.dll")]
     private static partial void setCharacterHandler(nint onCharacterInput);
+
+    [LibraryImport("fir.dll")]
+    private static partial void setMouseWheelScrollHandler(nint onMouseWheelScroll);
 
     public static void InitWindow(ref int width, ref int height, string title, bool isFullscreen = false)
     {
@@ -258,4 +264,6 @@ public static partial class FIRAPI
     public static void SetResizeHandler(ResizeCallback onResize) => setResizeHandler(Marshal.GetFunctionPointerForDelegate(onResize));
 
     public static void SetCharacterHandler(CharCallback onCharacterInput) => setCharacterHandler(Marshal.GetFunctionPointerForDelegate(onCharacterInput));
+
+    public static void SetMouseWheelScrollHandler(ScrollCallback onMouseWheelScroll) => setMouseWheelScrollHandler(Marshal.GetFunctionPointerForDelegate(onMouseWheelScroll));
 }
